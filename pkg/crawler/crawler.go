@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/net/html"
 )
@@ -37,24 +38,32 @@ func (c *Crawler) CheckAndMark(url string) bool {
 
 func (c *Crawler) Crawl() {
 	var wg sync.WaitGroup
+	var pending int64
 
 	queue := make(chan string, 1000)
 
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
-		go c.worker(queue, &wg)
+		go c.worker(queue, &wg, &pending)
 	}
 
+	atomic.AddInt64(&pending, 1)
 	queue <- c.startURL
-	wg.Wait()
 
-	defer close(c.foundURLChan)
+	for atomic.LoadInt64(&pending) > 0 {
+		// Busy wait - could add sleep here for less CPU usage
+	}
+	close(queue)
+	wg.Wait()
+	fmt.Println("Crawling complete!")
+	close(c.foundURLChan)
 }
 
-func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup) {
+func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) {
+	defer wg.Done()
 	for rawURL := range queue {
 		if !c.CheckAndMark(rawURL) {
-			fmt.Printf("Skipping already visited: %s\n", rawURL)
+			atomic.AddInt64(pending, -1)
 			continue
 		}
 
@@ -63,12 +72,14 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup) {
 		baseURL, err := url.Parse(rawURL)
 		if err != nil {
 			fmt.Println("Error parsing URL:", err)
+			atomic.AddInt64(pending, -1)
 			continue
 		}
 
 		resp, err := http.Get(rawURL)
 		if err != nil {
 			fmt.Println("Error fetching:", err)
+			atomic.AddInt64(pending, -1)
 			continue
 		}
 
@@ -76,43 +87,153 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup) {
 		resp.Body.Close()
 		if err != nil {
 			fmt.Println("Error parsing HTML:", err)
+			atomic.AddInt64(pending, -1)
 			continue
 		}
 
-		c.extractLinks(doc, queue, baseURL)
-		wg.Done()
+		c.extractLinks(doc, queue, baseURL, pending)
+
+		atomic.AddInt64(pending, -1)
 	}
 }
 
-func (c *Crawler) extractLinks(n *html.Node, queue chan string, baseURL *url.URL) {
-	if n.Type == html.ElementNode && (n.Data == "a" || n.Data == "img") {
-		for _, attr := range n.Attr {
-			if attr.Key == "href" {
-				href := attr.Val
+func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.URL, pending *int64) {
+	stack := []*html.Node{root}
 
-				if strings.HasPrefix(href, "mailto:") ||
-					strings.HasPrefix(href, "javascript:") ||
-					strings.HasPrefix(href, "tel:") ||
-					strings.HasPrefix(href, "#") {
-					continue
+	for len(stack) > 0 {
+		node := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		if node.Type == html.ElementNode && node.Data == "a" {
+			for _, attr := range node.Attr {
+				if attr.Key == "href" {
+					href := attr.Val
+
+					if strings.HasPrefix(href, "mailto:") ||
+						strings.HasPrefix(href, "javascript:") ||
+						strings.HasPrefix(href, "tel:") ||
+						strings.HasPrefix(href, "#") {
+						continue
+					}
+
+					resolved := baseURL.ResolveReference(&url.URL{Path: href})
+
+					if resolved.Host != baseURL.Host {
+						continue
+					}
+
+					cleanURL := resolved.String()
+
+					if !c.CheckAndMark(cleanURL) {
+						continue
+					}
+
+					fmt.Printf("Found URL: %s\n", cleanURL)
+					atomic.AddInt64(pending, 1)
+					queue <- cleanURL
+					c.foundURLChan <- cleanURL
 				}
-
-				resolved := baseURL.ResolveReference(&url.URL{Path: href})
-
-				if resolved.Host != baseURL.Host {
-					continue
-				}
-
-				cleanURL := resolved.String()
-
-				fmt.Printf("Found URL: %s(%d)\n", cleanURL, len(queue))
-				queue <- cleanURL
-				c.foundURLChan <- cleanURL
 			}
 		}
-	}
 
-	for child := n.FirstChild; child != nil; child = child.NextSibling {
-		c.extractLinks(child, queue, baseURL)
+		if node.Type == html.ElementNode && node.Data == "img" {
+			for _, attr := range node.Attr {
+				if attr.Key == "src" {
+					src := attr.Val
+
+					if strings.HasPrefix(src, "mailto:") ||
+						strings.HasPrefix(src, "javascript:") ||
+						strings.HasPrefix(src, "tel:") ||
+						strings.HasPrefix(src, "#") {
+						continue
+					}
+
+					resolved := baseURL.ResolveReference(&url.URL{Path: src})
+
+					if resolved.Host != baseURL.Host {
+						continue
+					}
+
+					cleanURL := resolved.String()
+
+					if !c.CheckAndMark(cleanURL) {
+						continue
+					}
+
+					fmt.Printf("Found URL: %s\n", cleanURL)
+					atomic.AddInt64(pending, 1)
+					queue <- cleanURL
+					c.foundURLChan <- cleanURL
+				}
+			}
+		}
+
+		if node.Type == html.ElementNode && node.Data == "script" {
+			for _, attr := range node.Attr {
+				if attr.Key == "src" {
+					src := attr.Val
+
+					if strings.HasPrefix(src, "mailto:") ||
+						strings.HasPrefix(src, "javascript:") ||
+						strings.HasPrefix(src, "tel:") ||
+						strings.HasPrefix(src, "#") {
+						continue
+					}
+
+					resolved := baseURL.ResolveReference(&url.URL{Path: src})
+
+					if resolved.Host != baseURL.Host {
+						continue
+					}
+
+					cleanURL := resolved.String()
+
+					if !c.CheckAndMark(cleanURL) {
+						continue
+					}
+
+					fmt.Printf("Found URL: %s\n", cleanURL)
+					atomic.AddInt64(pending, 1)
+					queue <- cleanURL
+					c.foundURLChan <- cleanURL
+				}
+			}
+		}
+
+		if node.Type == html.ElementNode && node.Data == "link" {
+			for _, attr := range node.Attr {
+				if attr.Key == "href" {
+					href := attr.Val
+
+					if strings.HasPrefix(href, "mailto:") ||
+						strings.HasPrefix(href, "javascript:") ||
+						strings.HasPrefix(href, "tel:") ||
+						strings.HasPrefix(href, "#") {
+						continue
+					}
+
+					resolved := baseURL.ResolveReference(&url.URL{Path: href})
+
+					if resolved.Host != baseURL.Host {
+						continue
+					}
+
+					cleanURL := resolved.String()
+
+					if !c.CheckAndMark(cleanURL) {
+						continue
+					}
+
+					fmt.Printf("Found URL: %s\n", cleanURL)
+					atomic.AddInt64(pending, 1)
+					queue <- cleanURL
+					c.foundURLChan <- cleanURL
+				}
+			}
+		}
+
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			stack = append(stack, child)
+		}
 	}
 }
