@@ -45,7 +45,13 @@ func (r *Rewriter) Rewrite() {
 
 			r.rewriteHTML(doc)
 			r.saveHTML(doc, rawURL)
+		} else if strings.Contains(contentType, "image/") ||
+			strings.Contains(contentType, "css") ||
+			strings.Contains(contentType, "javascript") ||
+			strings.Contains(contentType, "font") {
+			r.saveBinary(resp.Body, rawURL)
 		} else {
+			fmt.Printf("Unknown content type '%s' for %s, saving as binary\n", contentType, rawURL)
 			r.saveBinary(resp.Body, rawURL)
 		}
 	}
@@ -161,11 +167,12 @@ func (r *Rewriter) rewriteHTML(root *html.Node) {
 
 func (*Rewriter) urlToFilename(url string) string {
 	parsedURL, err := neturl.Parse(url)
-	path := parsedURL.Path
 
 	if err != nil {
 		return ""
 	}
+
+	path := parsedURL.Path
 
 	path = strings.TrimSuffix(path, "?")
 	path = strings.TrimSuffix(path, "#")

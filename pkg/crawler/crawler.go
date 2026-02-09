@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -50,6 +51,7 @@ func (c *Crawler) Crawl() {
 
 	atomic.AddInt64(&pending, 1)
 	queue <- c.startURL
+	c.foundURLChan <- c.startURL
 
 	duration := time.Duration(time.Second * 10)
 	for atomic.LoadInt64(&pending) > 0 {
@@ -100,6 +102,59 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) 
 	}
 }
 
+func (c *Crawler) processURL(rawURL string, baseURL *url.URL, queue chan string, pending *int64) {
+	if rawURL == "" ||
+		strings.HasPrefix(rawURL, "mailto:") ||
+		strings.HasPrefix(rawURL, "javascript:") ||
+		strings.HasPrefix(rawURL, "tel:") ||
+		strings.HasPrefix(rawURL, "#") {
+		return
+	}
+
+	refURL, err := url.Parse(rawURL)
+	if err != nil {
+		return
+	}
+
+	resolved := baseURL.ResolveReference(refURL)
+
+	if resolved.Host != baseURL.Host {
+		return
+	}
+
+	cleanURL := resolved.String()
+
+	if !c.CheckAndMark(cleanURL) {
+		return
+	}
+
+	fmt.Printf("Found URL: %s\n", cleanURL)
+	atomic.AddInt64(pending, 1)
+	queue <- cleanURL
+	c.foundURLChan <- cleanURL
+}
+
+func (c *Crawler) processSrcset(srcset string, baseURL *url.URL, queue chan string, pending *int64) {
+	parts := strings.Split(srcset, ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if spaceIdx := strings.Index(part, " "); spaceIdx != -1 {
+			part = part[:spaceIdx]
+		}
+		c.processURL(part, baseURL, queue, pending)
+	}
+}
+
+func (c *Crawler) processStyle(style string, baseURL *url.URL, queue chan string, pending *int64) {
+	re := regexp.MustCompile(`url\(['"]?([^'"\)]+)['"]?\)`)
+	matches := re.FindAllStringSubmatch(style, -1)
+	for _, match := range matches {
+		if len(match) > 1 {
+			c.processURL(match[1], baseURL, queue, pending)
+		}
+	}
+}
+
 func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.URL, pending *int64) {
 	stack := []*html.Node{root}
 
@@ -119,7 +174,11 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 						continue
 					}
 
-					resolved := baseURL.ResolveReference(&url.URL{Path: href})
+					refURL, err := url.Parse(href)
+					if err != nil {
+						continue
+					}
+					resolved := baseURL.ResolveReference(refURL)
 
 					if resolved.Host != baseURL.Host {
 						continue
@@ -142,31 +201,26 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 		if node.Type == html.ElementNode && node.Data == "img" {
 			for _, attr := range node.Attr {
 				if attr.Key == "src" {
-					src := attr.Val
+					c.processURL(attr.Val, baseURL, queue, pending)
+				}
+				if attr.Key == "srcset" {
+					c.processSrcset(attr.Val, baseURL, queue, pending)
+				}
+			}
+		}
 
-					if strings.HasPrefix(src, "mailto:") ||
-						strings.HasPrefix(src, "javascript:") ||
-						strings.HasPrefix(src, "tel:") ||
-						strings.HasPrefix(src, "#") {
-						continue
+		if node.Type == html.ElementNode {
+			for _, attr := range node.Attr {
+				if attr.Key == "style" {
+					c.processStyle(attr.Val, baseURL, queue, pending)
+				}
+				if strings.HasPrefix(attr.Key, "data-") {
+					if strings.HasSuffix(attr.Key, "-icon") ||
+						strings.HasSuffix(attr.Key, "-bg") ||
+						strings.HasSuffix(attr.Key, "-image") ||
+						strings.HasSuffix(attr.Key, "-src") {
+						c.processURL(attr.Val, baseURL, queue, pending)
 					}
-
-					resolved := baseURL.ResolveReference(&url.URL{Path: src})
-
-					if resolved.Host != baseURL.Host {
-						continue
-					}
-
-					cleanURL := resolved.String()
-
-					if !c.CheckAndMark(cleanURL) {
-						continue
-					}
-
-					fmt.Printf("Found URL: %s\n", cleanURL)
-					atomic.AddInt64(pending, 1)
-					queue <- cleanURL
-					c.foundURLChan <- cleanURL
 				}
 			}
 		}
@@ -174,31 +228,7 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 		if node.Type == html.ElementNode && node.Data == "script" {
 			for _, attr := range node.Attr {
 				if attr.Key == "src" {
-					src := attr.Val
-
-					if strings.HasPrefix(src, "mailto:") ||
-						strings.HasPrefix(src, "javascript:") ||
-						strings.HasPrefix(src, "tel:") ||
-						strings.HasPrefix(src, "#") {
-						continue
-					}
-
-					resolved := baseURL.ResolveReference(&url.URL{Path: src})
-
-					if resolved.Host != baseURL.Host {
-						continue
-					}
-
-					cleanURL := resolved.String()
-
-					if !c.CheckAndMark(cleanURL) {
-						continue
-					}
-
-					fmt.Printf("Found URL: %s\n", cleanURL)
-					atomic.AddInt64(pending, 1)
-					queue <- cleanURL
-					c.foundURLChan <- cleanURL
+					c.processURL(attr.Val, baseURL, queue, pending)
 				}
 			}
 		}
@@ -215,7 +245,11 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 						continue
 					}
 
-					resolved := baseURL.ResolveReference(&url.URL{Path: href})
+					refURL, err := url.Parse(href)
+					if err != nil {
+						continue
+					}
+					resolved := baseURL.ResolveReference(refURL)
 
 					if resolved.Host != baseURL.Host {
 						continue
