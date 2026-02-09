@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/ireoluwa12345/go-copier/pkg/crawler"
+	"github.com/ireoluwa12345/go-copier/pkg/rewriter"
 )
 
 func main() {
@@ -18,7 +19,6 @@ func main() {
 
 	url := os.Args[1]
 
-	// Create output directory based on domain
 	domain := strings.ReplaceAll(url, "https://", "")
 	domain = strings.ReplaceAll(domain, "http://", "")
 	domain = strings.Split(domain, "/")[0]
@@ -27,20 +27,20 @@ func main() {
 	foundChan := make(chan string, 1000)
 
 	crawler := crawler.NewCrawler(url, foundChan)
+	rewriter := rewriter.NewRewriter(foundChan, outputDir)
 
 	var wg sync.WaitGroup
 
-	// Start crawler
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		crawler.Crawl()
 	}()
+	go func() {
+		defer wg.Done()
+		rewriter.Rewrite()
+	}()
 
-	// Wait for both to complete
 	wg.Wait()
-
-	// Print summary
-	fmt.Printf("\n=== Crawling Complete ===\n")
-	fmt.Printf("Output saved to: %s\n", outputDir)
+	fmt.Println("Copying completed successfully.")
 }

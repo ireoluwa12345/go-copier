@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"golang.org/x/net/html"
 )
@@ -42,7 +43,7 @@ func (c *Crawler) Crawl() {
 
 	queue := make(chan string, 1000)
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 2; i++ {
 		wg.Add(1)
 		go c.worker(queue, &wg, &pending)
 	}
@@ -50,8 +51,9 @@ func (c *Crawler) Crawl() {
 	atomic.AddInt64(&pending, 1)
 	queue <- c.startURL
 
+	duration := time.Duration(time.Second * 10)
 	for atomic.LoadInt64(&pending) > 0 {
-		// Busy wait - could add sleep here for less CPU usage
+		time.Sleep(duration)
 	}
 	close(queue)
 	wg.Wait()
@@ -76,6 +78,7 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) 
 			continue
 		}
 
+		time.Sleep(100 * time.Millisecond) // 10 requests/second
 		resp, err := http.Get(rawURL)
 		if err != nil {
 			fmt.Println("Error fetching:", err)
