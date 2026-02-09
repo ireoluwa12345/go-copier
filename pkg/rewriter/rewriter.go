@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/net/html"
@@ -26,6 +27,19 @@ func NewRewriter(foundURLChan chan string, outputDir string) *Rewriter {
 }
 
 func (r *Rewriter) Rewrite() {
+	var wg sync.WaitGroup
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go r.worker(&wg)
+	}
+
+	wg.Wait()
+}
+
+func (r *Rewriter) worker(wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	for rawURL := range r.foundURLChan {
 		time.Sleep(100 * time.Millisecond) // 10 requests/second
 		resp, err := http.Get(rawURL)

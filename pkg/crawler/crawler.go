@@ -44,7 +44,7 @@ func (c *Crawler) Crawl() {
 
 	queue := make(chan string, 1000)
 
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go c.worker(queue, &wg, &pending)
 	}
@@ -218,7 +218,8 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 					if strings.HasSuffix(attr.Key, "-icon") ||
 						strings.HasSuffix(attr.Key, "-bg") ||
 						strings.HasSuffix(attr.Key, "-image") ||
-						strings.HasSuffix(attr.Key, "-src") {
+						strings.HasSuffix(attr.Key, "-src") ||
+						strings.HasSuffix(attr.Key, "-bgimg") {
 						c.processURL(attr.Val, baseURL, queue, pending)
 					}
 				}
