@@ -105,27 +105,15 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) 
 
 		} else if strings.Contains(contentType, "text/css") {
 			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
 			urls := urlextractor.NewExtractor().Extract(string(body))
 
-			fmt.Printf("%v", urls)
-
-			for _, url := range urls {
-				cleanURL := url
-
-				c.mu.RLock()
-				alreadyVisited := c.visited[cleanURL]
-				c.mu.RUnlock()
-
-				if alreadyVisited {
-					return
-				}
-				atomic.AddInt64(pending, 1)
-				queue <- url
-				c.foundURLChan <- url
+			for _, extractedURL := range urls {
+				c.processURL(extractedURL, baseURL, queue, pending)
 			}
+		} else {
+			resp.Body.Close()
 		}
-
-		defer resp.Body.Close()
 		atomic.AddInt64(pending, -1)
 	}
 }
@@ -283,11 +271,14 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 
 					cleanURL := resolved.String()
 
-					if !c.CheckAndMark(cleanURL) {
+					c.mu.RLock()
+					alreadyVisited := c.visited[cleanURL]
+					c.mu.RUnlock()
+
+					if alreadyVisited {
 						continue
 					}
 
-					// fmt.Printf("Found URL: %s\n", cleanURL)
 					atomic.AddInt64(pending, 1)
 					queue <- cleanURL
 					c.foundURLChan <- cleanURL
