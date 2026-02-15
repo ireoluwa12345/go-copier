@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ireoluwa12345/go-copier/pkg/crawler"
-	"github.com/ireoluwa12345/go-copier/pkg/rewriter"
+	"github.com/ireoluwa12345/go-copier/internal/crawler"
+	"github.com/ireoluwa12345/go-copier/internal/rewriter"
 )
 
 func main() {

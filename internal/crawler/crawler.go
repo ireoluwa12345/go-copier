@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	"golang.org/x/net/html"
+
+	"github.com/ireoluwa12345/go-copier/pkg/css/urlextractor"
 )
 
 type Crawler struct {
@@ -71,7 +74,7 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) 
 			continue
 		}
 
-		fmt.Println("Crawling:", rawURL)
+		// fmt.Println("Crawling:", rawURL)
 
 		baseURL, err := url.Parse(rawURL)
 		if err != nil {
@@ -88,15 +91,34 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) 
 			continue
 		}
 
-		doc, err := html.Parse(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			fmt.Println("Error parsing HTML:", err)
-			atomic.AddInt64(pending, -1)
-			continue
-		}
+		contentType := resp.Header.Get("Content-Type")
+		fmt.Print(contentType)
+		if strings.Contains(contentType, "text/html") {
 
-		c.extractLinks(doc, queue, baseURL, pending)
+			doc, err := html.Parse(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				fmt.Println("Error parsing HTML:", err)
+				atomic.AddInt64(pending, -1)
+				continue
+			}
+			c.extractLinks(doc, queue, baseURL, pending)
+
+		} else if strings.Contains(contentType, "text/css") {
+			body, _ := io.ReadAll(resp.Body)
+			urls := urlextractor.NewExtractor().Extract(string(body))
+
+			fmt.Printf("%v", urls)
+
+			for _, url := range urls {
+				if !c.CheckAndMark(url) {
+					continue
+				}
+				atomic.AddInt64(pending, 1)
+				queue <- url
+				c.foundURLChan <- url
+			}
+		}
 
 		atomic.AddInt64(pending, -1)
 	}
@@ -128,7 +150,6 @@ func (c *Crawler) processURL(rawURL string, baseURL *url.URL, queue chan string,
 		return
 	}
 
-	fmt.Printf("Found URL: %s\n", cleanURL)
 	atomic.AddInt64(pending, 1)
 	queue <- cleanURL
 	c.foundURLChan <- cleanURL
@@ -190,7 +211,7 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 						continue
 					}
 
-					fmt.Printf("Found URL: %s\n", cleanURL)
+					// fmt.Printf("Found URL: %s\n", cleanURL)
 					atomic.AddInt64(pending, 1)
 					queue <- cleanURL
 					c.foundURLChan <- cleanURL
@@ -215,13 +236,7 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 					c.processStyle(attr.Val, baseURL, queue, pending)
 				}
 				if strings.HasPrefix(attr.Key, "data-") {
-					if strings.HasSuffix(attr.Key, "-icon") ||
-						strings.HasSuffix(attr.Key, "-bg") ||
-						strings.HasSuffix(attr.Key, "-image") ||
-						strings.HasSuffix(attr.Key, "-src") ||
-						strings.HasSuffix(attr.Key, "-bgimg") {
-						c.processURL(attr.Val, baseURL, queue, pending)
-					}
+					c.processURL(attr.Val, baseURL, queue, pending)
 				}
 			}
 		}
@@ -262,7 +277,7 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 						continue
 					}
 
-					fmt.Printf("Found URL: %s\n", cleanURL)
+					// fmt.Printf("Found URL: %s\n", cleanURL)
 					atomic.AddInt64(pending, 1)
 					queue <- cleanURL
 					c.foundURLChan <- cleanURL

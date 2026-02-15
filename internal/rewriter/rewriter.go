@@ -74,7 +74,7 @@ func (r *Rewriter) worker(wg *sync.WaitGroup) {
 func (r *Rewriter) saveBinary(body io.Reader, url string) {
 	filename := r.urlToFilename(url)
 	binaryFilePath := filepath.Join(r.outputDir, filename)
-	fmt.Printf("Printing %s\n", binaryFilePath)
+	// fmt.Printf("Printing %s\n", binaryFilePath)s
 
 	dir := filepath.Dir(binaryFilePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -96,7 +96,7 @@ func (r *Rewriter) saveHTML(root *html.Node, url string) {
 	filename := r.urlToFilename(url)
 	htmlFilePath := filepath.Join(r.outputDir, filename)
 
-	fmt.Printf("Printing %s\n", htmlFilePath)
+	// fmt.Printf("Printing %s\n", htmlFilePath)
 
 	dir := filepath.Dir(htmlFilePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
