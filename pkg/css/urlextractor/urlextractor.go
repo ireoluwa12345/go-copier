@@ -10,12 +10,10 @@ type Pattern struct {
 
 type Extractor struct {
 	patterns []*Pattern
-	urls     []string
 }
 
 func NewExtractor() *Extractor {
 	return &Extractor{
-		urls: make([]string, 0),
 		patterns: []*Pattern{
 			{
 				re: regexp.MustCompile(`url\(['"]?([^'"\)]+)['"]?\)`),
@@ -28,13 +26,14 @@ func NewExtractor() *Extractor {
 }
 
 func (p *Extractor) Extract(css string) []string {
+	urls := make([]string, 0)
 	for _, pattern := range p.patterns {
 		matches := pattern.re.FindAllStringSubmatch(css, -1)
 		for _, match := range matches {
 			if len(match) > 1 {
-				p.urls = append(p.urls, match[1])
+				urls = append(urls, match[1])
 			}
 		}
 	}
-	return p.urls
+	return urls
 }

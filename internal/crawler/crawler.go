@@ -92,7 +92,6 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) 
 		}
 
 		contentType := resp.Header.Get("Content-Type")
-		fmt.Print(contentType)
 		if strings.Contains(contentType, "text/html") {
 
 			doc, err := html.Parse(resp.Body)
@@ -111,8 +110,14 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) 
 			fmt.Printf("%v", urls)
 
 			for _, url := range urls {
-				if !c.CheckAndMark(url) {
-					continue
+				cleanURL := url
+
+				c.mu.RLock()
+				alreadyVisited := c.visited[cleanURL]
+				c.mu.RUnlock()
+
+				if alreadyVisited {
+					return
 				}
 				atomic.AddInt64(pending, 1)
 				queue <- url
@@ -120,6 +125,7 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) 
 			}
 		}
 
+		defer resp.Body.Close()
 		atomic.AddInt64(pending, -1)
 	}
 }
@@ -146,7 +152,11 @@ func (c *Crawler) processURL(rawURL string, baseURL *url.URL, queue chan string,
 
 	cleanURL := resolved.String()
 
-	if !c.CheckAndMark(cleanURL) {
+	c.mu.RLock()
+	alreadyVisited := c.visited[cleanURL]
+	c.mu.RUnlock()
+
+	if alreadyVisited {
 		return
 	}
 
