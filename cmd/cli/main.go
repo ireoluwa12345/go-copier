@@ -16,6 +16,7 @@ var rootCommand = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		url, _ := cmd.Flags().GetString("url")
 		outputDir, _ := cmd.Flags().GetString("output")
+		maxDepth, _ := cmd.Flags().GetInt("max-depth")
 		var err error
 
 		if url == "" && outputDir == "" {
@@ -35,7 +36,7 @@ var rootCommand = &cobra.Command{
 
 		p := tea.NewProgram(initialSpinnerModel(url, outputDir))
 		go func() {
-			copier.Copy(url, outputDir, func(progress *rewriter.Progress) {
+			copier.Copy(url, outputDir, maxDepth, func(progress *rewriter.Progress) {
 				p.Send(progressMsg{progress: progress})
 			})
 		}()
@@ -46,6 +47,7 @@ var rootCommand = &cobra.Command{
 func init() {
 	rootCommand.Flags().StringP("url", "u", "", "URL to download")
 	rootCommand.Flags().StringP("output", "o", "", "Output directory")
+	rootCommand.Flags().IntP("max-depth", "d", 2, "Maximum crawl depth")
 }
 
 func Execute() {

@@ -21,13 +21,20 @@ type Crawler struct {
 	mu           sync.RWMutex
 	visited      map[string]bool
 	foundURLChan chan string
+	maxDepth     int
 }
 
-func NewCrawler(url string, foundURLChan chan string) *Crawler {
+type urlQueue struct {
+	URL   string
+	Depth int
+}
+
+func NewCrawler(url string, foundURLChan chan string, maxDepth int) *Crawler {
 	return &Crawler{
 		startURL:     url,
 		foundURLChan: foundURLChan,
 		visited:      make(map[string]bool),
+		maxDepth:     maxDepth,
 	}
 }
 
@@ -45,7 +52,7 @@ func (c *Crawler) Crawl() {
 	var wg sync.WaitGroup
 	var pending int64
 
-	queue := make(chan string, 1000)
+	queue := make(chan urlQueue, 1000)
 
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
@@ -53,7 +60,7 @@ func (c *Crawler) Crawl() {
 	}
 
 	atomic.AddInt64(&pending, 1)
-	queue <- c.startURL
+	queue <- urlQueue{URL: c.startURL, Depth: 0}
 	c.foundURLChan <- c.startURL
 
 	duration := time.Duration(time.Second * 10)
@@ -66,17 +73,22 @@ func (c *Crawler) Crawl() {
 	close(c.foundURLChan)
 }
 
-func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) {
+func (c *Crawler) worker(queue chan urlQueue, wg *sync.WaitGroup, pending *int64) {
 	defer wg.Done()
-	for rawURL := range queue {
-		if !c.CheckAndMark(rawURL) {
+	for q := range queue {
+		if q.Depth > c.maxDepth {
+			atomic.AddInt64(pending, -1)
+			continue
+		}
+
+		if !c.CheckAndMark(q.URL) {
 			atomic.AddInt64(pending, -1)
 			continue
 		}
 
 		// fmt.Println("Crawling:", rawURL)
 
-		baseURL, err := url.Parse(rawURL)
+		baseURL, err := url.Parse(q.URL)
 		if err != nil {
 			fmt.Println("Error parsing URL:", err)
 			atomic.AddInt64(pending, -1)
@@ -84,7 +96,7 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) 
 		}
 
 		time.Sleep(100 * time.Millisecond) // 10 requests/second
-		resp, err := http.Get(rawURL)
+		resp, err := http.Get(q.URL)
 		if err != nil {
 			fmt.Println("Error fetching:", err)
 			atomic.AddInt64(pending, -1)
@@ -101,7 +113,7 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) 
 				atomic.AddInt64(pending, -1)
 				continue
 			}
-			c.extractLinks(doc, queue, baseURL, pending)
+			c.extractLinks(doc, queue, baseURL, pending, q.Depth)
 
 		} else if strings.Contains(contentType, "text/css") {
 			body, _ := io.ReadAll(resp.Body)
@@ -109,7 +121,7 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) 
 			urls := urlextractor.NewExtractor().Extract(string(body))
 
 			for _, extractedURL := range urls {
-				c.processURL(extractedURL, baseURL, queue, pending)
+				c.processURL(extractedURL, baseURL, queue, pending, q.Depth)
 			}
 		} else {
 			resp.Body.Close()
@@ -118,7 +130,7 @@ func (c *Crawler) worker(queue chan string, wg *sync.WaitGroup, pending *int64) 
 	}
 }
 
-func (c *Crawler) processURL(rawURL string, baseURL *url.URL, queue chan string, pending *int64) {
+func (c *Crawler) processURL(rawURL string, baseURL *url.URL, queue chan urlQueue, pending *int64, currentDepth int) {
 	if rawURL == "" ||
 		strings.HasPrefix(rawURL, "mailto:") ||
 		strings.HasPrefix(rawURL, "javascript:") ||
@@ -148,34 +160,40 @@ func (c *Crawler) processURL(rawURL string, baseURL *url.URL, queue chan string,
 		return
 	}
 
+	newDepth := currentDepth + 1
+	if newDepth > c.maxDepth {
+		return
+	}
+
 	atomic.AddInt64(pending, 1)
-	queue <- cleanURL
+	queue <- urlQueue{URL: cleanURL, Depth: newDepth}
 	c.foundURLChan <- cleanURL
 }
 
-func (c *Crawler) processSrcset(srcset string, baseURL *url.URL, queue chan string, pending *int64) {
+func (c *Crawler) processSrcset(srcset string, baseURL *url.URL, queue chan urlQueue, pending *int64, currentDepth int) {
 	parts := strings.Split(srcset, ",")
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if spaceIdx := strings.Index(part, " "); spaceIdx != -1 {
 			part = part[:spaceIdx]
 		}
-		c.processURL(part, baseURL, queue, pending)
+		c.processURL(part, baseURL, queue, pending, currentDepth)
 	}
 }
 
-func (c *Crawler) processStyle(style string, baseURL *url.URL, queue chan string, pending *int64) {
+func (c *Crawler) processStyle(style string, baseURL *url.URL, queue chan urlQueue, pending *int64, currentDepth int) {
 	re := regexp.MustCompile(`url\(['"]?([^'"\)]+)['"]?\)`)
 	matches := re.FindAllStringSubmatch(style, -1)
 	for _, match := range matches {
 		if len(match) > 1 {
-			c.processURL(match[1], baseURL, queue, pending)
+			c.processURL(match[1], baseURL, queue, pending, currentDepth)
 		}
 	}
 }
 
-func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.URL, pending *int64) {
+func (c *Crawler) extractLinks(root *html.Node, queue chan urlQueue, baseURL *url.URL, pending *int64, currentDepth int) {
 	stack := []*html.Node{root}
+	newDepth := currentDepth + 1
 
 	for len(stack) > 0 {
 		node := stack[len(stack)-1]
@@ -209,9 +227,12 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 						continue
 					}
 
-					// fmt.Printf("Found URL: %s\n", cleanURL)
+					if newDepth > c.maxDepth {
+						continue
+					}
+
 					atomic.AddInt64(pending, 1)
-					queue <- cleanURL
+					queue <- urlQueue{URL: cleanURL, Depth: newDepth}
 					c.foundURLChan <- cleanURL
 				}
 			}
@@ -220,10 +241,10 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 		if node.Type == html.ElementNode && node.Data == "img" {
 			for _, attr := range node.Attr {
 				if attr.Key == "src" {
-					c.processURL(attr.Val, baseURL, queue, pending)
+					c.processURL(attr.Val, baseURL, queue, pending, newDepth)
 				}
 				if attr.Key == "srcset" {
-					c.processSrcset(attr.Val, baseURL, queue, pending)
+					c.processSrcset(attr.Val, baseURL, queue, pending, newDepth)
 				}
 			}
 		}
@@ -231,10 +252,10 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 		if node.Type == html.ElementNode {
 			for _, attr := range node.Attr {
 				if attr.Key == "style" {
-					c.processStyle(attr.Val, baseURL, queue, pending)
+					c.processStyle(attr.Val, baseURL, queue, pending, newDepth)
 				}
 				if strings.HasPrefix(attr.Key, "data-") {
-					c.processURL(attr.Val, baseURL, queue, pending)
+					c.processURL(attr.Val, baseURL, queue, pending, newDepth)
 				}
 			}
 		}
@@ -242,7 +263,7 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 		if node.Type == html.ElementNode && node.Data == "script" {
 			for _, attr := range node.Attr {
 				if attr.Key == "src" {
-					c.processURL(attr.Val, baseURL, queue, pending)
+					c.processURL(attr.Val, baseURL, queue, pending, newDepth)
 				}
 			}
 		}
@@ -279,8 +300,12 @@ func (c *Crawler) extractLinks(root *html.Node, queue chan string, baseURL *url.
 						continue
 					}
 
+					if newDepth > c.maxDepth {
+						continue
+					}
+
 					atomic.AddInt64(pending, 1)
-					queue <- cleanURL
+					queue <- urlQueue{URL: cleanURL, Depth: newDepth}
 					c.foundURLChan <- cleanURL
 				}
 			}

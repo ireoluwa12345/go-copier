@@ -195,7 +195,7 @@ func (m model) View() string {
 		"Select output directory for %s:\n\n%s\n\n%s",
 		currentURL,
 		m.filepicker.View(),
-		"(arrow keys to navigate, Enter to enter dir, b back, Ctrl+S select dir, Ctrl+N new dir, Esc quit)",
+		"(arrow keys to navigate, Enter to enter dir, b back, Ctrl+R select dir, Ctrl+N new dir, Esc quit)",
 	) + "\n"
 }
 

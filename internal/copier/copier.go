@@ -9,7 +9,7 @@ import (
 	"github.com/ireoluwa12345/go-copier/internal/rewriter"
 )
 
-func Copy(url string, outputDir string, onProgress func(*rewriter.Progress)) bool {
+func Copy(url string, outputDir string, maxDepth int, onProgress func(*rewriter.Progress)) bool {
 	domain := strings.ReplaceAll(url, "https://", "")
 	domain = strings.ReplaceAll(domain, "http://", "")
 	domain = strings.Split(domain, "/")[0]
@@ -18,7 +18,7 @@ func Copy(url string, outputDir string, onProgress func(*rewriter.Progress)) boo
 	foundChan := make(chan string, 1000)
 	progress := &rewriter.Progress{}
 
-	crawler := crawler.NewCrawler(url, foundChan)
+	crawler := crawler.NewCrawler(url, foundChan, maxDepth)
 	rewriter := rewriter.NewRewriter(foundChan, outputDir, progress)
 
 	var wg sync.WaitGroup
