@@ -1,9 +1,12 @@
 URL ?= https://ld-wt73.template-help.com/wt_67881/index.html
+PROJECT_DIR ?= output
 OUTPUT = go-copier
 
-build-and-run:
-	go build -o $(OUTPUT)
-	./$(OUTPUT) $(URL)
+.PHONY: cli
 
-build:
-	go build -o $(OUTPUT)
+cli:
+	go build -o $(OUTPUT) ./cmd/cli
+	./$(OUTPUT) --url $(URL) --output $(PROJECT_DIR)
+
+build-cli:
+	go build -o $(OUTPUT) ./cmd/cli

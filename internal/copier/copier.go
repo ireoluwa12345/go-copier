@@ -1,8 +1,6 @@
-package main
+package copier
 
 import (
-	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -11,23 +9,17 @@ import (
 	"github.com/ireoluwa12345/go-copier/internal/rewriter"
 )
 
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: go-copier <url>")
-		return
-	}
-
-	url := os.Args[1]
-
+func Copy(url string, outputDir string, onProgress func(*rewriter.Progress)) bool {
 	domain := strings.ReplaceAll(url, "https://", "")
 	domain = strings.ReplaceAll(domain, "http://", "")
 	domain = strings.Split(domain, "/")[0]
-	outputDir := filepath.Join("output", domain)
+	outputDir = filepath.Join(outputDir, domain)
 
 	foundChan := make(chan string, 1000)
+	progress := &rewriter.Progress{}
 
 	crawler := crawler.NewCrawler(url, foundChan)
-	rewriter := rewriter.NewRewriter(foundChan, outputDir)
+	rewriter := rewriter.NewRewriter(foundChan, outputDir, progress)
 
 	var wg sync.WaitGroup
 
@@ -36,11 +28,32 @@ func main() {
 		defer wg.Done()
 		crawler.Crawl()
 	}()
+
 	go func() {
 		defer wg.Done()
 		rewriter.Rewrite()
+		progress.IsComplete = true
+		if onProgress != nil {
+			onProgress(progress)
+		}
 	}()
 
+	if onProgress != nil {
+		go func() {
+			for {
+				if progress.IsComplete {
+					break
+				}
+				onProgress(progress)
+			}
+		}()
+	}
+
 	wg.Wait()
-	fmt.Println("Copying completed successfully.")
+
+	if onProgress != nil {
+		onProgress(progress)
+	}
+
+	return true
 }

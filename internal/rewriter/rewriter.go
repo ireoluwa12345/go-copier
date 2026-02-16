@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/html"
@@ -17,12 +18,20 @@ import (
 type Rewriter struct {
 	foundURLChan chan string
 	outputDir    string
+	progress     *Progress
 }
 
-func NewRewriter(foundURLChan chan string, outputDir string) *Rewriter {
+type Progress struct {
+	URLsFound  int32
+	URLsDone   int32
+	IsComplete bool
+}
+
+func NewRewriter(foundURLChan chan string, outputDir string, progress *Progress) *Rewriter {
 	return &Rewriter{
 		foundURLChan: foundURLChan,
 		outputDir:    outputDir,
+		progress:     progress,
 	}
 }
 
@@ -41,6 +50,9 @@ func (r *Rewriter) worker(wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for rawURL := range r.foundURLChan {
+		if r.progress != nil {
+			atomic.AddInt32(&r.progress.URLsFound, 1)
+		}
 		time.Sleep(100 * time.Millisecond) // 10 requests/second
 		resp, err := http.Get(rawURL)
 		if err != nil {
@@ -65,8 +77,11 @@ func (r *Rewriter) worker(wg *sync.WaitGroup) {
 			strings.Contains(contentType, "font") {
 			r.saveBinary(resp.Body, rawURL)
 		} else {
-			fmt.Printf("Unknown content type '%s' for %s, saving as binary\n", contentType, rawURL)
 			r.saveBinary(resp.Body, rawURL)
+		}
+
+		if r.progress != nil {
+			atomic.AddInt32(&r.progress.URLsDone, 1)
 		}
 	}
 }
