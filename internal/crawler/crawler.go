@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,9 +10,9 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"golang.org/x/net/html"
+	"golang.org/x/time/rate"
 
 	"github.com/ireoluwa12345/go-copier/pkg/css/urlextractor"
 )
@@ -22,6 +23,7 @@ type Crawler struct {
 	visited      map[string]bool
 	foundURLChan chan string
 	maxDepth     int
+	rateLimiter  *rate.Limiter
 }
 
 type urlQueue struct {
@@ -29,12 +31,13 @@ type urlQueue struct {
 	Depth int
 }
 
-func NewCrawler(url string, foundURLChan chan string, maxDepth int) *Crawler {
+func NewCrawler(url string, foundURLChan chan string, maxDepth int, rateLimiter *rate.Limiter) *Crawler {
 	return &Crawler{
 		startURL:     url,
 		foundURLChan: foundURLChan,
 		visited:      make(map[string]bool),
 		maxDepth:     maxDepth,
+		rateLimiter:  rateLimiter,
 	}
 }
 
@@ -63,10 +66,10 @@ func (c *Crawler) Crawl() {
 	queue <- urlQueue{URL: c.startURL, Depth: 0}
 	c.foundURLChan <- c.startURL
 
-	duration := time.Duration(time.Second * 10)
-	for atomic.LoadInt64(&pending) > 0 {
-		time.Sleep(duration)
-	}
+	// duration := time.Duration(time.Second * 10)
+	// for atomic.LoadInt64(&pending) > 0 {
+	// 	time.Sleep(duration)
+	// }
 	close(queue)
 	wg.Wait()
 	fmt.Println("Crawling complete!")
@@ -95,7 +98,12 @@ func (c *Crawler) worker(queue chan urlQueue, wg *sync.WaitGroup, pending *int64
 			continue
 		}
 
-		time.Sleep(100 * time.Millisecond) // 10 requests/second
+		err = c.rateLimiter.Wait(context.Background())
+		if err != nil {
+			fmt.Println("Error waiting for rate limiter:", err)
+			atomic.AddInt64(pending, -1)
+			continue
+		}
 		resp, err := http.Get(q.URL)
 		if err != nil {
 			fmt.Println("Error fetching:", err)

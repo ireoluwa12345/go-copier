@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"golang.org/x/net/html"
 )
@@ -53,7 +52,6 @@ func (r *Rewriter) worker(wg *sync.WaitGroup) {
 		if r.progress != nil {
 			atomic.AddInt32(&r.progress.URLsFound, 1)
 		}
-		time.Sleep(100 * time.Millisecond) // 10 requests/second
 		resp, err := http.Get(rawURL)
 		if err != nil {
 			fmt.Println("Error fetching:", err)

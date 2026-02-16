@@ -7,9 +7,14 @@ import (
 
 	"github.com/ireoluwa12345/go-copier/internal/crawler"
 	"github.com/ireoluwa12345/go-copier/internal/rewriter"
+	"golang.org/x/time/rate"
 )
 
 func Copy(url string, outputDir string, maxDepth int, onProgress func(*rewriter.Progress)) bool {
+
+	const ratesPerSecond = 2
+	const burstSize = 10
+
 	domain := strings.ReplaceAll(url, "https://", "")
 	domain = strings.ReplaceAll(domain, "http://", "")
 	domain = strings.Split(domain, "/")[0]
@@ -18,7 +23,9 @@ func Copy(url string, outputDir string, maxDepth int, onProgress func(*rewriter.
 	foundChan := make(chan string, 1000)
 	progress := &rewriter.Progress{}
 
-	crawler := crawler.NewCrawler(url, foundChan, maxDepth)
+	rateLimiter := rate.NewLimiter(rate.Limit(ratesPerSecond), burstSize)
+
+	crawler := crawler.NewCrawler(url, foundChan, maxDepth, rateLimiter)
 	rewriter := rewriter.NewRewriter(foundChan, outputDir, progress)
 
 	var wg sync.WaitGroup
