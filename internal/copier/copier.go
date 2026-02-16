@@ -12,8 +12,8 @@ import (
 
 func Copy(url string, outputDir string, maxDepth int, onProgress func(*rewriter.Progress)) bool {
 
-	const ratesPerSecond = 2
-	const burstSize = 10
+	const ratesPerSecond = 10
+	const burstSize = 50
 
 	domain := strings.ReplaceAll(url, "https://", "")
 	domain = strings.ReplaceAll(domain, "http://", "")
