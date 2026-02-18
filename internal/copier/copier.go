@@ -21,11 +21,12 @@ func Copy(url string, outputDir string, maxDepth int, onProgress func(*rewriter.
 	outputDir = filepath.Join(outputDir, domain)
 
 	foundChan := make(chan string, 1000)
+	done := make(chan struct{})
 	progress := &rewriter.Progress{}
 
 	rateLimiter := rate.NewLimiter(rate.Limit(ratesPerSecond), burstSize)
 
-	crawler := crawler.NewCrawler(url, foundChan, maxDepth, rateLimiter)
+	crawler := crawler.NewCrawler(url, foundChan, maxDepth, rateLimiter, done)
 	rewriter := rewriter.NewRewriter(foundChan, outputDir, progress)
 
 	var wg sync.WaitGroup
@@ -45,22 +46,9 @@ func Copy(url string, outputDir string, maxDepth int, onProgress func(*rewriter.
 		}
 	}()
 
-	if onProgress != nil {
-		go func() {
-			for {
-				if progress.IsComplete {
-					break
-				}
-				onProgress(progress)
-			}
-		}()
-	}
-
+	<-done
+	close(foundChan)
 	wg.Wait()
-
-	if onProgress != nil {
-		onProgress(progress)
-	}
 
 	return true
 }

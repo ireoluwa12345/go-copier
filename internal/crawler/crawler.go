@@ -24,6 +24,8 @@ type Crawler struct {
 	foundURLChan chan string
 	maxDepth     int
 	rateLimiter  *rate.Limiter
+	noOfWorkers  int
+	done         chan struct{}
 }
 
 type urlQueue struct {
@@ -31,13 +33,17 @@ type urlQueue struct {
 	Depth int
 }
 
-func NewCrawler(url string, foundURLChan chan string, maxDepth int, rateLimiter *rate.Limiter) *Crawler {
+const defaultNoOfWorkers = 5
+
+func NewCrawler(url string, foundURLChan chan string, maxDepth int, rateLimiter *rate.Limiter, done chan struct{}) *Crawler {
 	return &Crawler{
 		startURL:     url,
 		foundURLChan: foundURLChan,
 		visited:      make(map[string]bool),
 		maxDepth:     maxDepth,
 		rateLimiter:  rateLimiter,
+		noOfWorkers:  defaultNoOfWorkers,
+		done:         done,
 	}
 }
 
@@ -57,7 +63,7 @@ func (c *Crawler) Crawl() {
 
 	queue := make(chan urlQueue, 1000)
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < c.noOfWorkers; i++ {
 		wg.Add(1)
 		go c.worker(queue, &wg, &pending)
 	}
@@ -66,14 +72,17 @@ func (c *Crawler) Crawl() {
 	queue <- urlQueue{URL: c.startURL, Depth: 0}
 	c.foundURLChan <- c.startURL
 
-	// duration := time.Duration(time.Second * 10)
-	// for atomic.LoadInt64(&pending) > 0 {
-	// 	time.Sleep(duration)
-	// }
-	close(queue)
+	go func() {
+		for {
+			if atomic.LoadInt64(&pending) == 0 {
+				close(queue)
+				close(c.done)
+				return
+			}
+		}
+	}()
+
 	wg.Wait()
-	fmt.Println("Crawling complete!")
-	close(c.foundURLChan)
 }
 
 func (c *Crawler) worker(queue chan urlQueue, wg *sync.WaitGroup, pending *int64) {
