@@ -1,4 +1,5 @@
-# Go Copier
+<img src="go-copier.png" alt="Go Copier" width="250">
+
 
 A blazing-fast CLI tool built in Go for downloading and mirroring websites locally. Features an interactive TUI, concurrent crawling, and intelligent asset rewriting.
 
