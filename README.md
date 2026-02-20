@@ -77,3 +77,5 @@ go-copier/
 ---
 
 Built with Go and terminal magic.
+
+**For Educational Purposes only!**
