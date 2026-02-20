@@ -22,7 +22,10 @@ cd go-copier
 make build-cli
 
 # Or build and run directly
-make cli
+make run-cli
+
+# Or install the cli directly
+make install-cli
 ```
 
 ## Usage
