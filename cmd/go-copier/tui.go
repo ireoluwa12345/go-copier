@@ -24,6 +24,7 @@ const (
 	stepURL step = iota
 	stepDirPicker
 	stepNewDir
+	stepFinished
 )
 
 type model struct {
@@ -127,6 +128,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyCtrlR:
 			if m.step == stepDirPicker && m.filepicker.CurrentDirectory != "" {
 				m.selectedDir = m.filepicker.CurrentDirectory
+				m.step = stepFinished
 				return m, tea.Quit
 			}
 		case tea.KeyCtrlN:
@@ -186,17 +188,22 @@ func (m model) View() string {
 		) + "\n"
 	}
 
-	currentURL := m.url
-	if currentURL == "" {
-		currentURL = "your website"
+	if m.step == stepDirPicker {
+		currentURL := m.url
+		if currentURL == "" {
+			currentURL = "your website"
+		}
+
+		return fmt.Sprintf(
+			"Select output directory for %s:\n\n%s\n\n%s",
+			currentURL,
+			m.filepicker.View(),
+			"(arrow keys to navigate, Enter to enter dir, b back, Ctrl+R select dir, Ctrl+N new dir, Esc quit)",
+		) + "\n"
 	}
 
-	return fmt.Sprintf(
-		"Select output directory for %s:\n\n%s\n\n%s",
-		currentURL,
-		m.filepicker.View(),
-		"(arrow keys to navigate, Enter to enter dir, b back, Ctrl+R select dir, Ctrl+N new dir, Esc quit)",
-	) + "\n"
+	return ""
+
 }
 
 var ErrCancelled = errors.New("operation cancelled")

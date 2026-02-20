@@ -52,7 +52,7 @@ func (m spinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.completed = true
 			return m, tea.Quit
 		}
-		return m, nil
+		return m, m.spinner.Tick
 
 	case errMsg:
 		m.err = msg

@@ -18,6 +18,7 @@ type Rewriter struct {
 	foundURLChan chan string
 	outputDir    string
 	progress     *Progress
+	onProgress   func(*Progress)
 }
 
 type Progress struct {
@@ -26,11 +27,12 @@ type Progress struct {
 	IsComplete bool
 }
 
-func NewRewriter(foundURLChan chan string, outputDir string, progress *Progress) *Rewriter {
+func NewRewriter(foundURLChan chan string, outputDir string, progress *Progress, onProgress func(*Progress)) *Rewriter {
 	return &Rewriter{
 		foundURLChan: foundURLChan,
 		outputDir:    outputDir,
 		progress:     progress,
+		onProgress:   onProgress,
 	}
 }
 
@@ -80,6 +82,9 @@ func (r *Rewriter) worker(wg *sync.WaitGroup) {
 
 		if r.progress != nil {
 			atomic.AddInt32(&r.progress.URLsDone, 1)
+			if r.onProgress != nil {
+				r.onProgress(r.progress)
+			}
 		}
 	}
 }

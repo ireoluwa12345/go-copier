@@ -27,7 +27,7 @@ func Copy(url string, outputDir string, maxDepth int, onProgress func(*rewriter.
 	rateLimiter := rate.NewLimiter(rate.Limit(ratesPerSecond), burstSize)
 
 	crawler := crawler.NewCrawler(url, foundChan, maxDepth, rateLimiter, done)
-	rewriter := rewriter.NewRewriter(foundChan, outputDir, progress)
+	rewriter := rewriter.NewRewriter(foundChan, outputDir, progress, onProgress)
 
 	var wg sync.WaitGroup
 
