@@ -3,6 +3,11 @@
 
 A blazing-fast CLI tool built in Go for downloading and mirroring websites locally. Features an interactive TUI, concurrent crawling, and intelligent asset rewriting.
 
+<img src="./usage-video.gif" width="400" alt="Usage of Go Copier">
+
+## Motivation
+I needed to extract the HTML, CSS, and JS files from a WordPress site to host them on a new platform for a client. Back when I used Windows, I would have used the HTTrack desktop app, but since switching to Linux, I couldn't find a tool that quite fit the bill. I decided to write my own tool instead—it seemed like a great learning experience.
+
 ## Features
 
 - **Interactive TUI** - Beautiful terminal interface powered by [Bubble Tea](https://github.com/charmbracelet/bubbletea)
@@ -11,43 +16,52 @@ A blazing-fast CLI tool built in Go for downloading and mirroring websites local
 - **Real-time Progress** - Live download progress with visual feedback
 - **Flexible Interface** - Use interactive mode or CLI flags
 
-## Installation
+## Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/ireoluwa12345/go-copier.git
-cd go-copier
+# Install with Go Toolchain 
+go install github.com/ireoluwa12345/go-copier/cmd/go-copier@latest
 
-# Build the binary
-make build-cli
-
-# Or build and run directly
-make run-cli
-
-# Or install the cli directly
-make install-cli
+go-copier
 ```
 
 ## Usage
 
-### Interactive Mode
+```bash
+Usage:
+  go-copier [flags]
 
-Run without flags to launch the interactive TUI:
+Flags:
+  -h, --help            help for go-copier
+  -o, --output string   Output directory (default ".")
+  -u, --url string      URL to crawl
+  -d, --depth int       Maximum crawl depth (default 1)
+```
+## Contributing
+### Clone the repo
 
 ```bash
-./go-copier
+git clone https://github.com/ireoluwa12345/go-copier.git
+cd go-copier
 ```
 
-### CLI Mode
+### Build the compiled binary
 
 ```bash
-./go-copier --url https://example.com --output ./downloads
-
-# Or use short flags
-./go-copier -u https://example.com -o ./downloads
+make build-cli
 ```
 
-## Project Structure
+### Run the test suite
+
+```bash
+go test ./...
+```
+
+### Submit a pull request
+
+If you'd like to contribute, please fork the repository and open a pull request to the `main` branch.
+
+### Project Structure
 
 ```
 go-copier/
@@ -63,14 +77,7 @@ go-copier/
 └── Makefile             # Build automation
 ```
 
-## How It Works
-
-1. **Crawl** - Discovers all linked pages and assets recursively
-2. **Rewrite** - Modifies HTML/CSS to use local paths
-3. **Download** - Concurrently fetches all resources
-4. **Organize** - Saves files in a structured directory by domain
-
-## Dependencies
+### Dependencies
 
 - [Cobra](https://github.com/spf13/cobra) - CLI framework
 - [Bubble Tea](https://github.com/charmbracelet/bubbletea) - TUI framework
