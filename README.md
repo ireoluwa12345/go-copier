@@ -3,7 +3,7 @@
 
 A blazing-fast CLI tool built in Go for downloading and mirroring websites locally. Features an interactive TUI, concurrent crawling, and intelligent asset rewriting.
 
-<img src="./usage-video.gif" width="400" alt="Usage of Go Copier">
+<img src="./usage-video.gif" width="100%" alt="Usage of Go Copier">
 
 ## Motivation
 I needed to extract the HTML, CSS, and JS files from a WordPress site to host them on a new platform for a client. Back when I used Windows, I would have used the HTTrack desktop app, but since switching to Linux, I couldn't find a tool that quite fit the bill. I decided to write my own tool instead—it seemed like a great learning experience.
